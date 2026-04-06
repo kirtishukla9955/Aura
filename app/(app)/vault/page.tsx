@@ -1,34 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppHeader } from "@/components/app-header";
 import { motion } from "framer-motion";
+import { api } from "@/lib/api";
 
 export default function VaultPage() {
   const [isHashing, setIsHashing] = useState(false);
   const [hashComplete, setHashComplete] = useState(false);
+  const [fileHash, setFileHash] = useState<string | null>(null);
+  const [vaultItems, setVaultItems] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     file: null as File | null,
   });
 
+  // Load vault items on mount and after each successful commit
+  useEffect(() => {
+    api.getVault()
+  .then((data) => {
+    if (Array.isArray(data)) setVaultItems(data);
+    else setVaultItems([]);
+  })
+  .catch(() => setVaultItems([]));
+  }, [hashComplete]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.description) return;
+    if (!formData.title || !formData.file) return;
 
     setIsHashing(true);
     setHashComplete(false);
+    setFileHash(null);
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    try {
+      // 1. Hash the file client-side
+      const buffer = await formData.file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const generatedHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+      setFileHash(generatedHash);
 
-    setIsHashing(false);
-    setHashComplete(true);
+      // 2. POST to backend
+      const result = await api.commitIP(formData.title, formData.description, generatedHash);
 
-    setTimeout(() => {
-      setHashComplete(false);
-      setFormData({ title: "", description: "", file: null });
-    }, 3000);
+      if (result.error) throw new Error(result.error);
+
+      setIsHashing(false);
+      setHashComplete(true);
+
+      setTimeout(() => {
+        setHashComplete(false);
+        setFormData({ title: "", description: "", file: null });
+        setFileHash(null);
+      }, 3000);
+    } catch (err) {
+      console.error(err);
+      setIsHashing(false);
+      alert("Failed to commit to vault. Are you logged in?");
+    }
   };
 
   return (
@@ -102,7 +133,7 @@ export default function VaultPage() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={isHashing || !formData.title || !formData.description}
+            disabled={isHashing || !formData.title || !formData.file}
             className="w-full py-4 rounded-lg font-mono text-sm uppercase tracking-wider transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed bg-primary/10 border border-primary text-primary btn-glow hover:bg-primary/20"
           >
             {isHashing ? (
@@ -111,7 +142,7 @@ export default function VaultPage() {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
                   <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-                Hashing...
+                Hashing & Committing...
               </span>
             ) : hashComplete ? (
               <span className="flex items-center justify-center gap-2">
@@ -127,7 +158,7 @@ export default function VaultPage() {
         </form>
 
         {/* Hash Preview */}
-        {(isHashing || hashComplete) && (
+        {(isHashing || hashComplete) && fileHash && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -135,15 +166,13 @@ export default function VaultPage() {
           >
             <p className="font-mono text-xs text-muted mb-2">Generated Hash</p>
             <p className="font-mono text-sm text-primary break-all">
-              {isHashing
-                ? "0x" + "█".repeat(64)
-                : "0x7a3f8c2e1d4b6a9f0e5c8d7b2a4e6f1c9d8b7a5e3f2c1d0e9f8a7b6c5d4e3f2a"}
+              0x{fileHash}
             </p>
           </motion.div>
         )}
       </motion.div>
 
-      {/* Recent Submissions */}
+      {/* Your Vault — real data from backend */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -152,22 +181,26 @@ export default function VaultPage() {
       >
         <h3 className="font-mono text-sm text-muted mb-4 uppercase tracking-wider">Your Vault</h3>
         <div className="space-y-3">
-          {[
-            { name: "Neural Network Architecture v2", hash: "0x7a3...b2f", date: "Mar 15, 2024" },
-            { name: "Quantum Algorithm Design", hash: "0x1c9...e4d", date: "Mar 10, 2024" },
-            { name: "Blockchain Protocol Spec", hash: "0x5f2...a1c", date: "Mar 5, 2024" },
-          ].map((item, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border"
-            >
-              <div>
-                <p className="font-mono text-sm text-foreground">{item.name}</p>
-                <p className="font-mono text-xs text-primary">{item.hash}</p>
+          {vaultItems.length === 0 ? (
+            <p className="font-mono text-xs text-muted text-center py-4">No items committed yet</p>
+          ) : (
+            vaultItems.map((item, index) => (
+              <div
+                key={item.id || index}
+                className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border"
+              >
+                <div>
+                  <p className="font-mono text-sm text-foreground">{item.title}</p>
+                  <p className="font-mono text-xs text-primary">
+                    {item.fileHash ? `0x${item.fileHash.slice(0, 10)}...` : item.txHash?.slice(0, 12)}
+                  </p>
+                </div>
+                <span className="font-mono text-xs text-muted">
+                  {new Date(item.timestamp).toLocaleDateString()}
+                </span>
               </div>
-              <span className="font-mono text-xs text-muted">{item.date}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </motion.div>
     </div>

@@ -1,25 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppHeader } from "@/components/app-header";
 import { motion } from "framer-motion";
+import { api } from "@/lib/api";
 
 export default function RevealPage() {
   const [hash1, setHash1] = useState("");
   const [hash2, setHash2] = useState("");
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<"match" | "mismatch" | null>(null);
+  const [owner, setOwner] = useState<string | null>(null);
+  const [timestamp, setTimestamp] = useState<number | null>(null);
+  const [verifications, setVerifications] = useState<any[]>([]);
+
+  // Load recent verifications on mount
+  useEffect(() => {
+    api.getVault()
+      .then(() => {
+        // Try to load verifications (requires auth)
+        fetch("http://localhost:4000/api/reveal/verifications", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("pf_token") || ""}` },
+        })
+          .then((r) => r.json())
+          .then((data) => { if (Array.isArray(data)) setVerifications(data); })
+          .catch(() => {});
+      })
+      .catch(() => {});
+  }, [result]); // refresh after each comparison
 
   const handleCompare = async () => {
     if (!hash1 || !hash2) return;
 
     setComparing(true);
     setResult(null);
+    setOwner(null);
+    setTimestamp(null);
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    setComparing(false);
-    setResult(hash1.toLowerCase() === hash2.toLowerCase() ? "match" : "mismatch");
+    try {
+      const data = await api.compareHashes(hash1, hash2);
+      setResult(data.match ? "match" : "mismatch");
+      if (data.owner) setOwner(data.owner);
+      if (data.timestamp) setTimestamp(data.timestamp);
+    } catch {
+      setResult("mismatch");
+    } finally {
+      setComparing(false);
+    }
   };
 
   return (
@@ -81,7 +108,7 @@ export default function RevealPage() {
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
                 <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
-              Verifying...
+              Verifying on-chain...
             </span>
           ) : (
             "Compare Hashes"
@@ -123,11 +150,29 @@ export default function RevealPage() {
                 ? "The cryptographic signatures are identical. IP authenticity verified."
                 : "The signatures differ. This may indicate modification or different source."}
             </p>
+
+            {/* On-chain owner + timestamp if returned */}
+            {result === "match" && owner && (
+              <div className="mt-4 space-y-2 text-left">
+                <div className="p-3 rounded-lg bg-white/[0.02] border border-card-border">
+                  <p className="font-mono text-xs text-muted mb-1">Original Owner</p>
+                  <p className="font-mono text-xs text-primary break-all">{owner}</p>
+                </div>
+                {timestamp && (
+                  <div className="p-3 rounded-lg bg-white/[0.02] border border-card-border">
+                    <p className="font-mono text-xs text-muted mb-1">Registered On</p>
+                    <p className="font-mono text-xs text-foreground">
+                      {new Date(timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </motion.div>
 
-      {/* Recent Verifications */}
+      {/* Recent Verifications — real data from backend */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -138,22 +183,31 @@ export default function RevealPage() {
           Recent Verifications
         </h3>
         <div className="space-y-3">
-          {[
-            { name: "Patent Application #2847", status: "verified", time: "2 hours ago" },
-            { name: "Research Paper v3.1", status: "verified", time: "1 day ago" },
-            { name: "Algorithm Design Doc", status: "mismatch", time: "3 days ago" },
-          ].map((item, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${item.status === "verified" ? "bg-green-400" : "bg-red-400"}`} />
-                <p className="font-mono text-sm text-foreground">{item.name}</p>
+          {verifications.length === 0 ? (
+            <p className="font-mono text-xs text-muted text-center py-4">No verifications yet</p>
+          ) : (
+            verifications.map((item, index) => (
+              <div
+                key={item.id || index}
+                className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${item.matchFound ? "bg-green-400" : "bg-red-400"}`} />
+                  <div>
+                    <p className="font-mono text-sm text-foreground">
+                      {item.hash ? `0x${item.hash.slice(0, 16)}...` : "Unknown hash"}
+                    </p>
+                    <p className="font-mono text-xs text-muted">
+                      {item.originalOwner ? `${item.originalOwner.slice(0, 10)}...` : ""}
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-xs text-muted">
+                  {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : ""}
+                </span>
               </div>
-              <span className="font-mono text-xs text-muted">{item.time}</span>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </motion.div>
     </div>
