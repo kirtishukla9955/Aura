@@ -56,8 +56,14 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<any[]>([]);
  
   useEffect(() => {
-    api.getStats().then(setStats).catch(console.error);
-    api.getActivity().then(setActivities).catch(console.error);
+    const load = () => {
+      api.getStats().then(setStats).catch(console.error);
+      api.getActivity().then(setActivities).catch(console.error);
+    };
+    load();
+    // Poll every 10 seconds to pick up new vault commits and proposals
+    const interval = setInterval(load, 10000);
+    return () => clearInterval(interval);
   }, []);
  
   return (

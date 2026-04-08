@@ -94,4 +94,20 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hash1, hash2 }),
     }).then((r) => r.json()),
+
+  getVerifications: () => {
+    const token = _token;
+    return fetch(`${BASE}/api/reveal/verifications`, {
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+    }).then((r) => r.ok ? r.json() : []);
+  },
+
+  createProposal: (title: string, description: string, requestedAmount: string) =>
+    fetch(`${BASE}/api/proposals`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ title, description, requestedAmount }),
+    }).then((r) => r.json()),
 };

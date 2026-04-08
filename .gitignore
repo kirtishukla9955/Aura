@@ -3,4 +3,3 @@ node_modules/
 backend/.env
 .env.local
 .next/
-api.ts

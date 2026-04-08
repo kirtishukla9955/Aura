@@ -14,18 +14,10 @@ export default function RevealPage() {
   const [timestamp, setTimestamp] = useState<number | null>(null);
   const [verifications, setVerifications] = useState<any[]>([]);
 
-  // Load recent verifications on mount
+  // Load recent verifications on mount and after each comparison
   useEffect(() => {
-    api.getVault()
-      .then(() => {
-        // Try to load verifications (requires auth)
-        fetch("http://localhost:4000/api/reveal/verifications", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("pf_token") || ""}` },
-        })
-          .then((r) => r.json())
-          .then((data) => { if (Array.isArray(data)) setVerifications(data); })
-          .catch(() => {});
-      })
+    api.getVerifications()
+      .then((data: any[]) => { if (Array.isArray(data)) setVerifications(data); })
       .catch(() => {});
   }, [result]); // refresh after each comparison
 

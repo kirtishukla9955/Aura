@@ -16,14 +16,15 @@ export default function VaultPage() {
     file: null as File | null,
   });
 
-  // Load vault items on mount and after each successful commit
+  // Load vault items on mount, after each successful commit, and poll every 10s
   useEffect(() => {
-    api.getVault()
-  .then((data) => {
-    if (Array.isArray(data)) setVaultItems(data);
-    else setVaultItems([]);
-  })
-  .catch(() => setVaultItems([]));
+    const load = () =>
+      api.getVault()
+        .then((data) => { if (Array.isArray(data)) setVaultItems(data); else setVaultItems([]); })
+        .catch(() => setVaultItems([]));
+    load();
+    const poll = setInterval(load, 10000);
+    return () => clearInterval(poll);
   }, [hashComplete]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -185,20 +186,33 @@ export default function VaultPage() {
             <p className="font-mono text-xs text-muted text-center py-4">No items committed yet</p>
           ) : (
             vaultItems.map((item, index) => (
-              <div
+              <motion.div
                 key={item.id || index}
-                className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-card-border hover:border-primary/30 transition-all"
               >
-                <div>
-                  <p className="font-mono text-sm text-foreground">{item.title}</p>
-                  <p className="font-mono text-xs text-primary">
-                    {item.fileHash ? `0x${item.fileHash.slice(0, 10)}...` : item.txHash?.slice(0, 12)}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-mono text-sm text-foreground truncate">{item.title}</p>
+                    {item.verified && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono bg-green-500/15 text-green-400 border border-green-500/25">
+                        ✓ verified
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-mono text-xs text-primary truncate">
+                    {item.fileHash ? `0x${item.fileHash.slice(0, 16)}...` : item.txHash?.slice(0, 18)}
                   </p>
+                  {item.ipfsUrl && (
+                    <p className="font-mono text-[10px] text-muted truncate mt-0.5">{item.ipfsUrl}</p>
+                  )}
                 </div>
-                <span className="font-mono text-xs text-muted">
+                <span className="font-mono text-xs text-muted shrink-0 ml-4">
                   {new Date(item.timestamp).toLocaleDateString()}
                 </span>
-              </div>
+              </motion.div>
             ))
           )}
         </div>

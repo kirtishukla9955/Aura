@@ -494,6 +494,7 @@ export default function NetworkPage() {
   const [tigStatus, setTigStatus]       = useState<"idle" | "connecting" | "live">("idle");
   const [nodes, setNodes]               = useState<GraphNode[]>(FALLBACK_NODES);
   const [edges, setEdges]               = useState<GraphEdge[]>(FALLBACK_EDGES);
+  const [recentEvents, setRecentEvents] = useState<Array<{id: string; label: string; ts: number}>>([]);
 
   // ── Normalise raw API edges ──────────────────────────────────────────────────
   // LOGIC: TigerGraph edge responses use from_id/to_id (REST++) or
@@ -525,6 +526,53 @@ export default function NetworkPage() {
       .catch(() => {
         console.warn("Network graph: backend unreachable, using fallback data");
       });
+  }, []);
+
+  // ── Real-time SSE: listen for new nodes broadcast by backend ─────────────────
+  useEffect(() => {
+    const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const es = new EventSource(`${BASE}/api/network/events`);
+
+    es.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "node_added" && msg.payload) {
+          const { node: rawNode, edge: rawEdge } = msg.payload;
+          if (rawNode) {
+            const newNode = normaliseNodes([rawNode])[0];
+            if (newNode) {
+              setNodes((prev) => {
+                if (prev.find((n) => n.id === newNode.id)) return prev;
+                return [...prev, newNode];
+              });
+            }
+          }
+          if (rawEdge) {
+            const processed = {
+              from: String(rawEdge.from ?? rawEdge.from_id ?? ""),
+              to:   String(rawEdge.to   ?? rawEdge.to_id   ?? ""),
+              weight: Number(rawEdge.weight ?? 0.5),
+            };
+            if (processed.from && processed.to) {
+              setEdges((prev) => {
+                if (prev.find((e) => e.from === processed.from && e.to === processed.to)) return prev;
+                return [...prev, processed];
+              });
+            }
+          }
+          // Flash the node count green briefly to signal new data
+          setTigStatus("live");
+          if (rawNode?.label) {
+            setRecentEvents((prev) => [
+              { id: String(Date.now()), label: rawNode.label, ts: Date.now() },
+              ...prev.slice(0, 4),
+            ]);
+          }
+        }
+      } catch (_) {}
+    };
+
+    return () => es.close();
   }, []);
 
   const handleZoomIn  = () => setZoom((z) => Math.min(z + 0.25, 2.5));
@@ -719,6 +767,34 @@ export default function NetworkPage() {
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {/* Real-time event feed */}
+      <AnimatePresence>
+        {recentEvents.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="glass-card p-4 mb-6"
+            style={{ borderTop: "1px solid rgba(34,197,94,0.4)" }}
+          >
+            <p className="font-mono text-xs text-green-400 uppercase tracking-wider mb-3">⬤ Live — New Nodes Added</p>
+            <div className="flex flex-col gap-2">
+              {recentEvents.map((ev) => (
+                <motion.div
+                  key={ev.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center justify-between font-mono text-xs"
+                >
+                  <span className="text-foreground">{ev.label}</span>
+                  <span className="text-muted">{new Date(ev.ts).toLocaleTimeString()}</span>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Top connected nodes */}
       <motion.div

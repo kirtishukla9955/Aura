@@ -559,6 +559,89 @@ function FundModal({ proposal, onClose, onFund }: {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Create Proposal Modal ────────────────────────────────────────────────────
+function CreateProposalModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (title: string, description: string, amount: string) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!title || !amount) return;
+    setSubmitting(true);
+    await onCreate(title, description, amount);
+    setSubmitting(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.92, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.92, y: 20 }}
+        onClick={(e) => e.stopPropagation()}
+        className="glass-card w-full max-w-md p-8 relative"
+        style={{ border: "1px solid rgba(0,123,255,0.35)" }}
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-muted hover:text-foreground text-xs">✕</button>
+        <h3 className="font-sentient text-lg text-foreground mb-6">Create New Proposal</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="font-mono text-xs text-muted uppercase tracking-wider block mb-1">Title</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Proposal title..."
+              className="w-full px-3 py-2 bg-black border border-primary/30 rounded-lg font-mono text-sm text-foreground placeholder:text-muted/50 focus:outline-none input-azure"
+            />
+          </div>
+          <div>
+            <label className="font-mono text-xs text-muted uppercase tracking-wider block mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe your proposal..."
+              rows={3}
+              className="w-full px-3 py-2 bg-black border border-primary/30 rounded-lg font-mono text-sm text-foreground placeholder:text-muted/50 focus:outline-none input-azure resize-none"
+            />
+          </div>
+          <div>
+            <label className="font-mono text-xs text-muted uppercase tracking-wider block mb-1">Requested Amount (ETH)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="e.g. 2.5"
+              className="w-full px-3 py-2 bg-black border border-primary/30 rounded-lg font-mono text-sm text-foreground placeholder:text-muted/50 focus:outline-none input-azure"
+            />
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={handleSubmit}
+            disabled={submitting || !title || !amount}
+            className="w-full py-3 rounded-lg font-mono text-sm uppercase tracking-wider bg-primary/10 border border-primary text-primary btn-glow hover:bg-primary/20 transition-all disabled:opacity-50"
+          >
+            {submitting ? "Submitting..." : "Submit Proposal"}
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function DAOPage() {
   const [proposals, setProposals] = useState<Proposal[]>(MOCK_PROPOSALS);
   const [loading, setLoading] = useState(true);
@@ -566,6 +649,7 @@ export default function DAOPage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [voteModal, setVoteModal] = useState<Proposal | null>(null);
   const [fundModal, setFundModal] = useState<Proposal | null>(null);
+  const [createModal, setCreateModal] = useState(false);
 
   // ── Backend fetch ─────────────────────────────────────────────────────────
   // Logic: If backend returns real proposals → replace mocks entirely.
@@ -577,25 +661,62 @@ export default function DAOPage() {
           setUsingMock(true);
         } else {
           setProposals(
-            data.map((p) => ({
-              id: String(p.id),
-              title: p.title,
-              description: p.ipfsHash || p.description || "",
-              requestedAmount: `${(Number(p.totalFunds) / 1e18).toFixed(4)} ETH`,
-              currentFunding: Number(p.totalFunds) / 1e18,
-              targetFunding: 1,
-              votes: p.yesVotes + p.noVotes,
-              votesYes: p.yesVotes,
-              votesNo: p.noVotes,
-              status: p.active ? "active" : "funded",
-              daysLeft: 30,
-            }))
+            data.map((p) => {
+              const current = Number(p.totalFunds) / 1e18;
+              const target  = p.targetFunds ? Number(p.targetFunds) / 1e18 : Math.max(current, 1);
+              return {
+                id: String(p.id),
+                title: p.title,
+                description: p.description || p.ipfsHash || "",
+                requestedAmount: `${target.toFixed(4)} ETH`,
+                currentFunding: current,
+                targetFunding: target,
+                votes: (p.yesVotes || 0) + (p.noVotes || 0),
+                votesYes: p.yesVotes || 0,
+                votesNo: p.noVotes || 0,
+                status: p.active ? "active" : "funded",
+                daysLeft: p.active ? Math.max(0, Math.ceil((p.timestamp + 86400000 * 30 - Date.now()) / 86400000)) : 0,
+                category: p.category || "Protocol",
+              };
+            })
           );
           setUsingMock(false);
         }
       })
       .catch(() => setUsingMock(true))
       .finally(() => setLoading(false));
+
+    // Poll every 15s to pick up new votes/funding from other users
+    const poll = setInterval(() => {
+      api.getProposals()
+        .then((data: any[]) => {
+          if (data && data.length > 0) {
+            setProposals(
+              data.map((p) => {
+                const current = Number(p.totalFunds) / 1e18;
+                const target  = p.targetFunds ? Number(p.targetFunds) / 1e18 : Math.max(current, 1);
+                return {
+                  id: String(p.id),
+                  title: p.title,
+                  description: p.description || p.ipfsHash || "",
+                  requestedAmount: `${target.toFixed(4)} ETH`,
+                  currentFunding: current,
+                  targetFunding: target,
+                  votes: (p.yesVotes || 0) + (p.noVotes || 0),
+                  votesYes: p.yesVotes || 0,
+                  votesNo: p.noVotes || 0,
+                  status: p.active ? "active" : "funded",
+                  daysLeft: p.active ? Math.max(0, Math.ceil((p.timestamp + 86400000 * 30 - Date.now()) / 86400000)) : 0,
+                  category: p.category || "Protocol",
+                };
+              })
+            );
+            setUsingMock(false);
+          }
+        })
+        .catch(() => {});
+    }, 15000);
+    return () => clearInterval(poll);
   }, []);
 
   // ── Vote handler ──────────────────────────────────────────────────────────
@@ -670,6 +791,28 @@ export default function DAOPage() {
     }
   };
 
+  const handleCreate = async (title: string, description: string, amount: string) => {
+    try {
+      const newP = await api.createProposal(title, description, amount);
+      if (newP && !newP.error) {
+        const target = parseFloat(amount) || 1;
+        setProposals((prev) => [{
+          id:              String(newP.id),
+          title:           newP.title,
+          description:     newP.description || "",
+          requestedAmount: `${target.toFixed(4)} ETH`,
+          currentFunding:  0,
+          targetFunding:   target,
+          votes: 0, votesYes: 0, votesNo: 0,
+          status:          "active",
+          daysLeft:        30,
+          category:        "Protocol",
+        }, ...prev]);
+        setUsingMock(false);
+      }
+    } catch (err) { console.error("Create proposal failed:", err); }
+  };
+
   const counts = {
     all:     proposals.length,
     active:  proposals.filter((p) => p.status === "active").length,
@@ -682,7 +825,16 @@ export default function DAOPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <AppHeader title="Funding DAO" />
+      <div className="flex items-center justify-between mb-0">
+        <AppHeader title="Funding DAO" />
+        <motion.button
+          whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+          onClick={() => setCreateModal(true)}
+          className="px-4 py-2 rounded-lg font-mono text-xs uppercase tracking-wider bg-primary/10 border border-primary/50 text-primary btn-glow hover:bg-primary/20 transition-all flex items-center gap-2 mr-1"
+        >
+          <span className="text-lg leading-none">+</span> New Proposal
+        </motion.button>
+      </div>
 
       {/* ── Stats Bar ── */}
       <motion.div
@@ -890,6 +1042,12 @@ export default function DAOPage() {
         )}
         {fundModal && (
           <FundModal proposal={fundModal} onClose={() => setFundModal(null)} onFund={handleFund} />
+        )}
+        {createModal && (
+          <CreateProposalModal
+            onClose={() => setCreateModal(false)}
+            onCreate={async (title, desc, amt) => { await handleCreate(title, desc, amt); setCreateModal(false); }}
+          />
         )}
       </AnimatePresence>
     </div>
