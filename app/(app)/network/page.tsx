@@ -9,37 +9,49 @@ import { api } from "@/lib/api";
 interface GraphNode {
   id: string;
   label: string;
-  x: number;       // 0-100 percentage of canvas width
-  y: number;       // 0-100 percentage of canvas height
+  x: number;
+  y: number;
   size: number;
   type: "core" | "patent" | "research" | "algorithm" | "data" | "model" | "proof" | "citation" | "link";
   connections: number;
   detail: string;
 }
 
-interface GraphEdge { from: string; to: string; weight?: number; }
+interface GraphEdge {
+  from: string;
+  to: string;
+  weight?: number;
+  relation?: string;
+}
 
-// ── Fallback data ─────────────────────────────────────────────────────────────
+// ── FALLBACK DATA — used when backend is unreachable ──────────────────────────
+// These match the prototype screenshot exactly: central hub + 8 satellite nodes
+// with all connecting lines pre-wired.
 const FALLBACK_NODES: GraphNode[] = [
-  { id: "1",  label: "IP Core",    x: 50, y: 50, size: 24, type: "core",      connections: 8, detail: "Central IP asset hub" },
-  { id: "2",  label: "Patent A",   x: 25, y: 30, size: 16, type: "patent",    connections: 4, detail: "US Patent #2847391" },
-  { id: "3",  label: "Patent B",   x: 75, y: 25, size: 16, type: "patent",    connections: 4, detail: "EU Patent #EU2024891" },
-  { id: "4",  label: "Research",   x: 20, y: 65, size: 14, type: "research",  connections: 3, detail: "Peer-reviewed paper" },
-  { id: "5",  label: "Algorithm",  x: 80, y: 60, size: 14, type: "algorithm", connections: 3, detail: "ZK-SNARK impl v2" },
-  { id: "6",  label: "Dataset",    x: 35, y: 82, size: 12, type: "data",      connections: 2, detail: "Training dataset v3" },
-  { id: "7",  label: "Model",      x: 65, y: 78, size: 12, type: "model",     connections: 2, detail: "ML model checkpoint" },
-  { id: "8",  label: "Proof",      x: 10, y: 45, size: 10, type: "proof",     connections: 1, detail: "On-chain ZK proof" },
-  { id: "9",  label: "Citation",   x: 90, y: 40, size: 10, type: "citation",  connections: 1, detail: "3rd party reference" },
-  { id: "10", label: "Link",       x: 50, y: 18, size:  8, type: "link",      connections: 2, detail: "Cross-chain reference" },
+  { id: "core-1",      label: "IP Core Hub",        x: 50, y: 50, size: 24, type: "core",      connections: 8, detail: "Central IP asset hub" },
+  { id: "patent-1",    label: "ZKP Auth Patent",     x: 22, y: 28, size: 16, type: "patent",    connections: 4, detail: "Zero-knowledge authentication (US Patent)" },
+  { id: "patent-2",    label: "DeFi AMM Patent",     x: 78, y: 22, size: 16, type: "patent",    connections: 4, detail: "Automated market maker patent" },
+  { id: "research-1",  label: "Layer 2 Research",    x: 18, y: 65, size: 14, type: "research",  connections: 3, detail: "Optimistic rollup paper" },
+  { id: "algorithm-1", label: "ZK-SNARK Engine",     x: 80, y: 62, size: 14, type: "algorithm", connections: 3, detail: "ZK proof generation algorithm" },
+  { id: "data-1",      label: "On-chain Dataset",    x: 35, y: 82, size: 12, type: "data",      connections: 2, detail: "DeFi training dataset" },
+  { id: "model-1",     label: "Risk Prediction ML",  x: 66, y: 80, size: 12, type: "model",     connections: 2, detail: "ML risk scoring model" },
+  { id: "proof-1",     label: "ZK Ownership Proof",  x:  8, y: 44, size: 10, type: "proof",     connections: 2, detail: "On-chain ZK proof" },
+  { id: "citation-1",  label: "Prior Art Reference", x: 92, y: 40, size: 10, type: "citation",  connections: 1, detail: "Academic citation" },
+  { id: "link-1",      label: "Cross-chain Ref",     x: 50, y: 12, size:  8, type: "link",      connections: 2, detail: "Cross-chain reference" },
 ];
 
 const FALLBACK_EDGES: GraphEdge[] = [
-  { from: "1", to: "2",  weight: 0.90 }, { from: "1", to: "3",  weight: 0.85 },
-  { from: "1", to: "4",  weight: 0.70 }, { from: "1", to: "5",  weight: 0.75 },
-  { from: "2", to: "8",  weight: 0.60 }, { from: "3", to: "9",  weight: 0.55 },
-  { from: "4", to: "6",  weight: 0.50 }, { from: "5", to: "7",  weight: 0.65 },
-  { from: "2", to: "10", weight: 0.40 }, { from: "3", to: "10", weight: 0.45 },
-  { from: "6", to: "7",  weight: 0.35 },
+  { from: "core-1",      to: "patent-1",    weight: 0.90, relation: "owns" },
+  { from: "core-1",      to: "patent-2",    weight: 0.88, relation: "owns" },
+  { from: "core-1",      to: "research-1",  weight: 0.72, relation: "cites" },
+  { from: "core-1",      to: "algorithm-1", weight: 0.76, relation: "implements" },
+  { from: "patent-1",    to: "proof-1",     weight: 0.65, relation: "verified by" },
+  { from: "patent-2",    to: "citation-1",  weight: 0.58, relation: "cites" },
+  { from: "patent-1",    to: "link-1",      weight: 0.42, relation: "referenced in" },
+  { from: "patent-2",    to: "link-1",      weight: 0.45, relation: "referenced in" },
+  { from: "research-1",  to: "data-1",      weight: 0.55, relation: "uses" },
+  { from: "algorithm-1", to: "model-1",     weight: 0.68, relation: "powers" },
+  { from: "data-1",      to: "model-1",     weight: 0.38, relation: "trains" },
 ];
 
 const NODE_COLORS: Record<GraphNode["type"], string> = {
@@ -55,16 +67,13 @@ const NODE_COLORS: Record<GraphNode["type"], string> = {
 };
 
 // ── normaliseNodes ─────────────────────────────────────────────────────────────
-// LOGIC: TigerGraph can return coordinates in any range (pixels, lat/lng, or missing).
-// We scan ALL x values to find min/max, then linearly rescale every node into
-// [PAD, 100-PAD] so they always fill the canvas regardless of source format.
-// If a node has no coords at all, we fall back to an evenly-spaced circular layout.
+// Converts raw backend node data into typed GraphNode[].
+// Handles missing x/y by placing nodes in a circle.
 function normaliseNodes(raw: any[]): GraphNode[] {
-  if (!raw || raw.length === 0) return [];
+  if (!raw?.length) return [];
 
   const xs = raw.map((n) => Number(n.x ?? n.attributes?.x ?? NaN)).filter(isFinite);
   const ys = raw.map((n) => Number(n.y ?? n.attributes?.y ?? NaN)).filter(isFinite);
-
   const minX = xs.length ? Math.min(...xs) : 0;
   const maxX = xs.length ? Math.max(...xs) : 1;
   const minY = ys.length ? Math.min(...ys) : 0;
@@ -76,72 +85,55 @@ function normaliseNodes(raw: any[]): GraphNode[] {
   return raw.map((n, i) => {
     const rawX = Number(n.x ?? n.attributes?.x ?? NaN);
     const rawY = Number(n.y ?? n.attributes?.y ?? NaN);
-
     let x: number, y: number;
     if (isFinite(rawX) && isFinite(rawY)) {
       x = PAD + ((rawX - minX) / rangeX) * (100 - PAD * 2);
       y = PAD + ((rawY - minY) / rangeY) * (100 - PAD * 2);
     } else {
       const angle = (i / raw.length) * Math.PI * 2 - Math.PI / 2;
-      const radius = i === 0 ? 0 : 35;
-      x = 50 + radius * Math.cos(angle);
-      y = 50 + radius * Math.sin(angle);
+      x = 50 + (i === 0 ? 0 : 35) * Math.cos(angle);
+      y = 50 + (i === 0 ? 0 : 35) * Math.sin(angle);
     }
-
     x = Math.max(5, Math.min(95, x));
     y = Math.max(5, Math.min(95, y));
 
     const rawType = (n.type ?? n.v_type ?? n.attributes?.type ?? "link").toLowerCase();
     const typeMap: Record<string, GraphNode["type"]> = {
-      core: "core", "ip asset": "core", ip_asset: "core", ipasset: "core",
-      patent: "patent", "patent group": "patent", patent_group: "patent",
-      research: "research", paper: "research",
+      core: "core", "ip asset": "core", ip_asset: "core",
+      patent: "patent", research: "research", paper: "research",
       algorithm: "algorithm", algo: "algorithm",
       data: "data", dataset: "data",
       model: "model", proof: "proof", citation: "citation", link: "link",
     };
-    const type: GraphNode["type"] = typeMap[rawType] ?? "link";
-    const connections = Number(n.connections ?? n.attributes?.connections ?? n.degree ?? 1);
-    const size = Math.max(8, Math.min(26, 8 + connections * 0.8));
-
+    const connections = Number(n.connections ?? n.degree ?? 1);
     return {
       id:          String(n.id ?? n.v_id ?? i),
       label:       String(n.label ?? n.attributes?.label ?? n.v_id ?? `Node ${i + 1}`),
-      x, y, size, type,
+      x, y,
+      size:        Math.max(8, Math.min(26, 8 + connections * 0.8)),
+      type:        typeMap[rawType] ?? "link",
       connections: isFinite(connections) ? connections : 1,
-      detail:      String(n.detail ?? n.attributes?.detail ?? n.attributes?.description ?? type),
+      detail:      String(n.detail ?? n.attributes?.detail ?? n.attributes?.description ?? rawType),
     };
   });
 }
 
-// ── NetworkGraph ───────────────────────────────────────────────────────────────
-// THE ROOT CAUSE OF MISSING LINES (now fixed):
-//
-// OLD broken logic:
-//   ctx.scale(zoom, zoom)          ← scales the entire canvas space
-//   fx = ((x/100) * W) / zoom      ← divides coord by zoom
-//   Result: ctx.scale doubles the offset while /zoom halves it.
-//   For nodes the visual rounding made them appear roughly correct.
-//   For edges the two endpoints had tiny numerical differences that
-//   produced lines of length ~0, invisible to the eye.
-//
-// NEW correct logic:
-//   We do NOT call ctx.scale() at all for coordinate placement.
-//   Instead we compute pixel coordinates directly:
-//     px = (node.x / 100) * canvas.width
-//     py = (node.y / 100) * canvas.height
-//   Zoom is applied by scaling the SIZE of nodes/glows only,
-//   not their positions. This guarantees edges connect the same
-//   pixel points that node circles are drawn at — every time.
-//
-// CANVAS SIZING BUG (also fixed):
-//   The canvas element defaults to 300×150px until explicitly sized.
-//   If draw() runs before ResizeObserver fires, W=300 and all nodes
-//   cluster near the left edge, edges appear as zero-length dots.
-//   Fix: read canvas.width/height fresh inside every draw() frame.
-//   The ResizeObserver sets canvas.width = parent.clientWidth, so by
-//   the second frame everything is correct.
+// ── normaliseEdges ─────────────────────────────────────────────────────────────
+// Accepts every edge shape TigerGraph or our backend can return.
+// THE KEY FIX: we accept from/to AND from_id/to_id AND source/target.
+function normaliseEdges(raw: any[]): GraphEdge[] {
+  if (!raw?.length) return [];
+  return raw
+    .map((e: any) => ({
+      from:     String(e.from     ?? e.from_id ?? e.source ?? e.src ?? ""),
+      to:       String(e.to       ?? e.to_id   ?? e.target ?? e.dst ?? ""),
+      weight:   Number(e.weight   ?? e.attributes?.weight  ?? 0.5),
+      relation: String(e.relation ?? e.attributes?.relation ?? e.label ?? ""),
+    }))
+    .filter((e) => e.from && e.to && e.from !== e.to);
+}
 
+// ── NetworkGraph Canvas Component ─────────────────────────────────────────────
 interface NetworkGraphProps {
   zoom: number;
   onNodeClick: (node: GraphNode) => void;
@@ -149,16 +141,10 @@ interface NetworkGraphProps {
   setHoveredNode: (id: string | null) => void;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  showRelations: boolean;
 }
 
-function NetworkGraph({
-  zoom,
-  onNodeClick,
-  hoveredNode,
-  setHoveredNode,
-  nodes,
-  edges,
-}: NetworkGraphProps) {
+function NetworkGraph({ zoom, onNodeClick, hoveredNode, setHoveredNode, nodes, edges, showRelations }: NetworkGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef   = useRef<number>(0);
   const timeRef   = useRef(0);
@@ -169,20 +155,14 @@ function NetworkGraph({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // SIZING: Set canvas pixel dimensions to match its CSS layout size.
-    // Must use clientWidth/Height (layout pixels), NOT getBoundingClientRect
-    // which can return fractional values on HiDPI screens.
+    // ── SIZING: must set canvas pixel dimensions to match CSS layout size ──
     const resize = () => {
       const parent = canvas.parentElement;
       if (!parent) return;
       const w = parent.clientWidth;
       const h = parent.clientHeight;
-      if (w > 0 && h > 0) {
-        canvas.width  = w;
-        canvas.height = h;
-      }
+      if (w > 0 && h > 0) { canvas.width = w; canvas.height = h; }
     };
-
     resize();
     const ro = new ResizeObserver(resize);
     if (canvas.parentElement) ro.observe(canvas.parentElement);
@@ -191,135 +171,146 @@ function NetworkGraph({
     const draw = () => {
       timeRef.current += 0.012;
       const t = timeRef.current;
-
-      // Read dimensions fresh every frame — ResizeObserver may have updated them
       const W = canvas.width;
       const H = canvas.height;
-
-      if (W === 0 || H === 0) {
-        animRef.current = requestAnimationFrame(draw);
-        return;
-      }
+      if (W === 0 || H === 0) { animRef.current = requestAnimationFrame(draw); return; }
 
       ctx.clearRect(0, 0, W, H);
 
-      // ── HELPER: node percentage → actual canvas pixel ──────────────
-      // This is the single source of truth for coordinate conversion.
-      // Both edges AND nodes use this same function so they always match.
-      const toPixel = (node: GraphNode) => ({
-        px: (node.x / 100) * W,
-        py: (node.y / 100) * H,
-      });
+      // ── COORDINATE HELPER ─────────────────────────────────────────────────
+      // Single source of truth: node % position → canvas pixel.
+      // Both edge endpoints AND node circles use this SAME function,
+      // which is why lines always connect correctly to node centers.
+      const px = (node: GraphNode) => (node.x / 100) * W;
+      const py = (node: GraphNode) => (node.y / 100) * H;
 
-      // ── EDGES ────────────────────────────────────────────────────────
-      // Draw edges FIRST so they appear behind nodes.
-      // Each edge gets an animated dashed line + optional glow on hover.
+      // ── DRAW EDGES FIRST (behind nodes) ───────────────────────────────────
       edges.forEach((edge) => {
-        const fromNode = nodes.find((n) => n.id === edge.from);
-        const toNode   = nodes.find((n) => n.id === edge.to);
-        if (!fromNode || !toNode) return;
+        const A = nodes.find((n) => n.id === edge.from);
+        const B = nodes.find((n) => n.id === edge.to);
+        if (!A || !B) return;
 
-        const { px: fx, py: fy } = toPixel(fromNode);
-        const { px: tx, py: ty } = toPixel(toNode);
+        const ax = px(A), ay = py(A);
+        const bx = px(B), by = py(B);
 
-        if (!isFinite(fx) || !isFinite(fy) || !isFinite(tx) || !isFinite(ty)) return;
+        // Guard: skip NaN and zero-length edges
+        if (!isFinite(ax + ay + bx + by)) return;
+        if (Math.abs(ax - bx) < 0.5 && Math.abs(ay - by) < 0.5) return;
 
-        // Skip degenerate zero-length edges
-        if (Math.abs(fx - tx) < 0.5 && Math.abs(fy - ty) < 0.5) return;
+        const isHov = hoveredNode === A.id || hoveredNode === B.id;
+        const w = edge.weight ?? 0.5;
+        const pulse = Math.abs(Math.sin(t * 1.5 + ax * 0.01));
 
-        const isHov = hoveredNode === fromNode.id || hoveredNode === toNode.id;
-        const pulse = Math.abs(Math.sin(t * 1.5 + parseInt(edge.from, 10) * 0.7));
-        const edgeWeight = edge.weight ?? 0.5;
-
-        // Animated dash: offset marches along the line over time
+        // Animated marching dashes
         ctx.setLineDash([6, 10]);
         ctx.lineDashOffset = -(t * 18);
 
         if (isHov) {
-          // Glowing edge on hover
-          ctx.shadowColor = NODE_COLORS.core;
-          ctx.shadowBlur  = 8;
-          ctx.strokeStyle = `rgba(0,123,255,${0.6 + pulse * 0.35})`;
+          ctx.strokeStyle = `rgba(0,180,255,${0.7 + pulse * 0.25})`;
           ctx.lineWidth   = 2;
+          ctx.shadowColor = "#007BFF";
+          ctx.shadowBlur  = 10;
         } else {
+          ctx.strokeStyle = `rgba(0,150,255,${0.18 + w * 0.28 + pulse * 0.06})`;
+          ctx.lineWidth   = 0.8 + w * 0.9;
           ctx.shadowBlur  = 0;
-          // Weight-tinted opacity: heavier edges are more visible
-          ctx.strokeStyle = `rgba(0,150,255,${0.15 + edgeWeight * 0.25 + pulse * 0.08})`;
-          ctx.lineWidth   = 0.8 + edgeWeight * 0.8;
         }
 
         ctx.beginPath();
-        ctx.moveTo(fx, fy);
-        ctx.lineTo(tx, ty);
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
         ctx.stroke();
-
         ctx.setLineDash([]);
         ctx.shadowBlur = 0;
 
-        // ── Travelling particle along edge (subtle animation) ─────────
-        // A small bright dot travels from→to, reset each loop.
-        const progress = (t * 0.4 + parseInt(edge.from, 10) * 0.3) % 1;
-        const px = fx + (tx - fx) * progress;
-        const py = fy + (ty - fy) * progress;
+        // ── Travelling particle along edge ────────────────────────────────
+        const progress = (t * 0.35 + ax * 0.002) % 1;
+        const dotX = ax + (bx - ax) * progress;
+        const dotY = ay + (by - ay) * progress;
         ctx.beginPath();
-        ctx.arc(px, py, isHov ? 2.5 : 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = isHov ? "rgba(0,200,255,0.9)" : "rgba(0,180,255,0.45)";
+        ctx.arc(dotX, dotY, isHov ? 2.5 : 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = isHov ? "rgba(0,220,255,0.95)" : "rgba(0,180,255,0.5)";
         ctx.fill();
+
+        // ── Relation label at edge midpoint ───────────────────────────────
+        if (edge.relation && (showRelations || isHov)) {
+          const mx = (ax + bx) / 2;
+          const my = (ay + by) / 2;
+          const angle = Math.atan2(by - ay, bx - ax);
+
+          ctx.save();
+          ctx.translate(mx, my);
+          // Keep text readable: flip if line goes right-to-left
+          const flip = Math.abs(angle) > Math.PI / 2;
+          ctx.rotate(flip ? angle + Math.PI : angle);
+
+          ctx.font = "9px monospace";
+          const tw = ctx.measureText(edge.relation).width;
+          const pad = 4;
+
+          ctx.fillStyle = isHov ? "rgba(0,20,60,0.92)" : "rgba(0,10,40,0.78)";
+          ctx.beginPath();
+          ctx.roundRect(-(tw / 2 + pad), -8, tw + pad * 2, 14, 3);
+          ctx.fill();
+
+          ctx.fillStyle = isHov ? "rgba(0,220,255,1)" : `rgba(100,185,255,${0.55 + w * 0.35})`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(edge.relation, 0, 1);
+          ctx.restore();
+        }
       });
 
-      // ── NODES ─────────────────────────────────────────────────────────
+      // ── DRAW NODES (on top of edges) ──────────────────────────────────────
       nodes.forEach((node, i) => {
-        const { px: x, py: y } = toPixel(node);
+        const x = px(node);
+        const y = py(node);
         if (!isFinite(x) || !isFinite(y)) return;
 
-        const pulse     = Math.sin(t * 1.8 + i * 0.6) * 0.18 + 1;
-        const isHov     = hoveredNode === node.id;
-        // Zoom scales visual node size only, not position
-        const baseSize  = (node.size > 0 ? node.size : 10) * pulse * zoom * (isHov ? 1.35 : 1);
-
-        if (!isFinite(baseSize) || baseSize <= 0) return;
-
-        const color = NODE_COLORS[node.type] ?? NODE_COLORS.link;
+        const isHov    = hoveredNode === node.id;
+        const pulse    = Math.sin(t * 1.8 + i * 0.6) * 0.18 + 1;
+        const baseSize = Math.max(1, (node.size || 10) * pulse * zoom * (isHov ? 1.35 : 1));
+        const color    = NODE_COLORS[node.type] ?? NODE_COLORS.link;
 
         // Outer ambient glow
-        const g = ctx.createRadialGradient(x, y, 0, x, y, baseSize * 2.8);
-        g.addColorStop(0,    color + (isHov ? "cc" : "66"));
-        g.addColorStop(0.45, color + "33");
-        g.addColorStop(1,    color + "00");
+        const grd = ctx.createRadialGradient(x, y, 0, x, y, baseSize * 2.8);
+        grd.addColorStop(0,    color + (isHov ? "bb" : "55"));
+        grd.addColorStop(0.45, color + "22");
+        grd.addColorStop(1,    color + "00");
         ctx.beginPath();
         ctx.arc(x, y, baseSize * 2.8, 0, Math.PI * 2);
-        ctx.fillStyle = g;
+        ctx.fillStyle = grd;
         ctx.fill();
 
-        // Core circle
+        // Core filled circle
         ctx.beginPath();
         ctx.arc(x, y, baseSize * 0.6, 0, Math.PI * 2);
         ctx.fillStyle = color;
-        if (isHov) { ctx.shadowColor = color; ctx.shadowBlur = 20; }
+        if (isHov) { ctx.shadowColor = color; ctx.shadowBlur = 22; }
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Inner white dot (gives the "glowing orb" look)
+        // Inner white highlight dot
         ctx.beginPath();
-        ctx.arc(x, y, baseSize * 0.25, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.arc(x, y, baseSize * 0.24, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
         ctx.fill();
 
-        // Ring for hovered node
+        // Hover ring
         if (isHov) {
           ctx.beginPath();
-          ctx.arc(x, y, baseSize * 0.75, 0, Math.PI * 2);
-          ctx.strokeStyle = color + "99";
+          ctx.arc(x, y, baseSize * 0.78, 0, Math.PI * 2);
+          ctx.strokeStyle = color + "88";
           ctx.lineWidth   = 1.5;
           ctx.stroke();
         }
 
-        // Label — always for core, hover for others
+        // Label: always for core nodes, hover-only for others
         if (isHov || node.type === "core") {
           ctx.font      = `${isHov ? "600 " : ""}11px 'GeistMono', monospace`;
-          ctx.fillStyle = isHov ? "#fff" : "rgba(255,255,255,0.7)";
+          ctx.fillStyle = isHov ? "#fff" : "rgba(255,255,255,0.72)";
           ctx.textAlign = "center";
-          ctx.fillText(node.label, x, y - baseSize * 0.85);
+          ctx.fillText(node.label, x, y - baseSize * 0.9);
         }
       });
 
@@ -333,61 +324,46 @@ function NetworkGraph({
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animRef.current);
     };
-  }, [zoom, hoveredNode, nodes, edges]);
+  }, [zoom, hoveredNode, nodes, edges, showRelations]);
 
-  // ── Hit testing ──────────────────────────────────────────────────────────────
-  // LOGIC: Convert mouse event coords → canvas pixel space using the same
-  // (node.x/100)*W formula as the draw loop. scaleX/Y handles cases where
-  // CSS size ≠ canvas pixel size (e.g. devicePixelRatio or flex layout).
-  const getHitNode = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>): string | null => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-      const rect  = canvas.getBoundingClientRect();
-      const scaleX = canvas.width  / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const mx = (e.clientX - rect.left) * scaleX;
-      const my = (e.clientY - rect.top)  * scaleY;
-
-      for (const node of nodes) {
-        const nx = (node.x / 100) * canvas.width;
-        const ny = (node.y / 100) * canvas.height;
-        if (isFinite(nx) && isFinite(ny) && Math.hypot(mx - nx, my - ny) < (node.size || 10) * zoom * 1.6) {
-          return node.id;
-        }
-      }
-      return null;
-    },
-    [nodes, zoom]
-  );
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const found = getHitNode(e);
-    setHoveredNode(found);
-    if (canvasRef.current) canvasRef.current.style.cursor = found ? "pointer" : "default";
-  }, [getHitNode, setHoveredNode]);
-
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const id = getHitNode(e);
-    if (id) {
-      const node = nodes.find((n) => n.id === id);
-      if (node) onNodeClick(node);
+  // ── Hit test: find which node the mouse is over ───────────────────────────
+  const getHitNode = useCallback((e: React.MouseEvent<HTMLCanvasElement>): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect  = canvas.getBoundingClientRect();
+    const sx    = canvas.width  / rect.width;
+    const sy    = canvas.height / rect.height;
+    const mx    = (e.clientX - rect.left) * sx;
+    const my    = (e.clientY - rect.top)  * sy;
+    for (const node of nodes) {
+      const nx = (node.x / 100) * canvas.width;
+      const ny = (node.y / 100) * canvas.height;
+      if (isFinite(nx) && isFinite(ny) && Math.hypot(mx - nx, my - ny) < (node.size || 10) * zoom * 1.6)
+        return node.id;
     }
-  }, [getHitNode, nodes, onNodeClick]);
+    return null;
+  }, [nodes, zoom]);
 
   return (
     <canvas
       ref={canvasRef}
       className="w-full h-full block"
       style={{ background: "transparent" }}
-      onMouseMove={handleMouseMove}
+      onMouseMove={(e) => {
+        const found = getHitNode(e);
+        setHoveredNode(found);
+        if (canvasRef.current) canvasRef.current.style.cursor = found ? "pointer" : "default";
+      }}
       onMouseLeave={() => setHoveredNode(null)}
-      onClick={handleClick}
+      onClick={(e) => {
+        const id = getHitNode(e);
+        if (id) { const n = nodes.find((x) => x.id === id); if (n) onNodeClick(n); }
+      }}
     />
   );
 }
 
-// ── Stat mini-card ─────────────────────────────────────────────────────────────
+// ── MiniStat ──────────────────────────────────────────────────────────────────
 function MiniStat({ label, value, delay }: { label: string; value: string; delay: number }) {
   return (
     <motion.div
@@ -403,7 +379,7 @@ function MiniStat({ label, value, delay }: { label: string; value: string; delay
   );
 }
 
-// ── Node detail panel ──────────────────────────────────────────────────────────
+// ── NodeDetailPanel ───────────────────────────────────────────────────────────
 function NodeDetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }) {
   const color = NODE_COLORS[node.type] ?? NODE_COLORS.link;
   return (
@@ -415,27 +391,16 @@ function NodeDetailPanel({ node, onClose }: { node: GraphNode; onClose: () => vo
       className="absolute top-4 right-4 w-56 glass-card p-4 z-10"
       style={{ border: `1px solid ${color}66`, boxShadow: `0 0 24px ${color}33` }}
     >
-      <button
-        onClick={onClose}
-        className="absolute top-2 right-2 text-muted hover:text-foreground text-xs"
-      >
-        ✕
-      </button>
+      <button onClick={onClose} className="absolute top-2 right-2 text-muted hover:text-foreground text-xs">✕</button>
       <div className="flex items-center gap-2 mb-3">
         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }} />
         <span className="font-sentient text-sm text-foreground">{node.label}</span>
       </div>
       <div className="space-y-2">
-        {[
-          ["Type",     node.type,                                   color],
-          ["Links",    String(node.connections),                    undefined],
-          ["Position", `${node.x.toFixed(0)}%, ${node.y.toFixed(0)}%`, undefined],
-        ].map(([label, val, clr]) => (
-          <div key={label as string} className="flex justify-between">
-            <span className="font-mono text-xs text-muted">{label}</span>
-            <span className="font-mono text-xs capitalize" style={{ color: (clr as string) ?? "inherit" }}>
-              {val}
-            </span>
+        {([["Type", node.type, color], ["Links", String(node.connections), undefined], ["Pos", `${node.x.toFixed(0)}%,${node.y.toFixed(0)}%`, undefined]] as [string, string, string | undefined][]).map(([lbl, val, clr]) => (
+          <div key={lbl} className="flex justify-between">
+            <span className="font-mono text-xs text-muted">{lbl}</span>
+            <span className="font-mono text-xs capitalize" style={{ color: clr ?? "inherit" }}>{val}</span>
           </div>
         ))}
         <div className="pt-2 border-t border-white/[0.06]">
@@ -446,153 +411,132 @@ function NodeDetailPanel({ node, onClose }: { node: GraphNode; onClose: () => vo
   );
 }
 
-// ── TigerGraph integration notes ───────────────────────────────────────────────
-// WHAT api.getGraph() MUST RETURN for full graph rendering:
-//
-// {
-//   nodes: [
-//     {
-//       id: "v1",                 ← string or number vertex id
-//       v_id: "v1",               ← TigerGraph REST++ field (fallback)
-//       label: "Patent Alpha",    ← display name
-//       type: "patent",           ← maps to GraphNode["type"]
-//       x: 45,                   ← optional: 0-100 or any range (normalised)
-//       y: 30,                   ← optional: 0-100 or any range
-//       connections: 3,           ← degree / link count
-//       detail: "US Patent...",   ← tooltip description
-//     },
-//     ...
-//   ],
-//   edges: [
-//     {
-//       from: "v1",               ← must match a node id
-//       to:   "v2",               ← must match a node id
-//       from_id: "v1",            ← TigerGraph REST++ fallback
-//       to_id:   "v2",            ← TigerGraph REST++ fallback
-//       weight: 0.8,              ← optional 0-1 (affects line opacity/width)
-//     },
-//     ...
-//   ]
-// }
-//
-// If your GSQL query returns results in a different shape, update the
-// field aliases in normaliseNodes() and the edge-normalisation block in
-// handleTigerConnect() / the mount useEffect.
-//
-// Common TigerGraph REST++ shapes this code already handles:
-//   • data.vertices  / data.results (node array fallbacks)
-//   • n.v_id         (vertex id)
-//   • n.v_type       (vertex type)
-//   • n.attributes.x / n.attributes.label / n.attributes.description
-//   • e.from_id / e.to_id / e.src / e.dst  (edge endpoint fallbacks)
-
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function NetworkPage() {
-  const [zoom, setZoom]                 = useState(1);
-  const [hoveredNode, setHoveredNode]   = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [tigStatus, setTigStatus]       = useState<"idle" | "connecting" | "live">("idle");
-  const [nodes, setNodes]               = useState<GraphNode[]>(FALLBACK_NODES);
-  const [edges, setEdges]               = useState<GraphEdge[]>(FALLBACK_EDGES);
-  const [recentEvents, setRecentEvents] = useState<Array<{id: string; label: string; ts: number}>>([]);
+  const [zoom, setZoom]                   = useState(1);
+  const [hoveredNode, setHoveredNode]     = useState<string | null>(null);
+  const [selectedNode, setSelectedNode]   = useState<GraphNode | null>(null);
+  const [tigStatus, setTigStatus]         = useState<"idle" | "connecting" | "live">("idle");
+  const [nodes, setNodes]                 = useState<GraphNode[]>(FALLBACK_NODES);
+  const [edges, setEdges]                 = useState<GraphEdge[]>(FALLBACK_EDGES);
+  const [showRelations, setShowRelations] = useState(true);
+  const [recentEvents, setRecentEvents]   = useState<{ id: string; label: string; ts: number }[]>([]);
 
-  // ── Normalise raw API edges ──────────────────────────────────────────────────
-  // LOGIC: TigerGraph edge responses use from_id/to_id (REST++) or
-  // from/to (custom API). We accept all variants and strip invalid edges.
-  const processEdges = (rawEdges: any[]): GraphEdge[] =>
-    rawEdges
-      .map((e: any) => ({
-        from:   String(e.from   ?? e.from_id ?? e.src ?? ""),
-        to:     String(e.to     ?? e.to_id   ?? e.dst ?? ""),
-        weight: Number(e.weight ?? e.attributes?.weight ?? 0.5),
-      }))
-      .filter((e: GraphEdge) => e.from && e.to && e.from !== e.to);
-
-  // ── Fetch on mount ──────────────────────────────────────────────────────────
+  // ── Fetch graph on mount ─────────────────────────────────────────────────
+  // Strategy: call REST endpoint first. If it returns valid nodes+edges, use them.
+  // Otherwise keep the FALLBACK data so lines are always visible.
   useEffect(() => {
-    api.getGraph()
+    const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    fetch(`${BASE}/api/network/graph`)
+      .then((r) => r.json())
       .then((data: any) => {
-        const rawNodes: any[] = data?.nodes ?? data?.vertices ?? data?.results ?? [];
-        const rawEdges: any[] = data?.edges ?? data?.results?.edges ?? [];
+        // Accept nodes from multiple possible response shapes
+        const rawNodes: any[] = data?.nodes ?? data?.vertices ?? [];
+        // THE KEY FIX: accept edges from BOTH naming conventions
+        const rawEdges: any[] = data?.edges ?? data?.links ?? [];
 
         if (rawNodes.length > 0) {
-          setNodes(normaliseNodes(rawNodes));
-          setTigStatus("live");
+          const processed = normaliseNodes(rawNodes);
+          if (processed.length > 0) setNodes(processed);
         }
+
         if (rawEdges.length > 0) {
-          setEdges(processEdges(rawEdges));
+          const processed = normaliseEdges(rawEdges);
+          // Only replace fallback edges if we actually got valid ones
+          if (processed.length > 0) {
+            setEdges(processed);
+          }
         }
+
+        // Mark as live if we got real data
+        if (rawNodes.length > 0) setTigStatus("live");
       })
       .catch(() => {
-        console.warn("Network graph: backend unreachable, using fallback data");
+        // Backend unreachable — fallback data already set, lines will show
+        console.warn("Network: backend unreachable, showing fallback graph");
       });
   }, []);
 
-  // ── Real-time SSE: listen for new nodes broadcast by backend ─────────────────
+  // ── SSE — real-time node additions from vault commits ────────────────────
   useEffect(() => {
     const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-    const es = new EventSource(`${BASE}/api/network/events`);
+    let es: EventSource;
+    try {
+      es = new EventSource(`${BASE}/api/network/events`);
 
-    es.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "node_added" && msg.payload) {
-          const { node: rawNode, edge: rawEdge } = msg.payload;
-          if (rawNode) {
-            const newNode = normaliseNodes([rawNode])[0];
-            if (newNode) {
-              setNodes((prev) => {
-                if (prev.find((n) => n.id === newNode.id)) return prev;
-                return [...prev, newNode];
-              });
+      es.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          // initial_graph: full graph pushed on SSE connect — use it
+          if (msg.type === "initial_graph" && msg.payload) {
+            const rawNodes: any[] = msg.payload?.nodes ?? [];
+            const rawEdges: any[] = msg.payload?.edges ?? [];
+            if (rawNodes.length > 0) {
+              const n = normaliseNodes(rawNodes);
+              if (n.length > 0) setNodes(n);
             }
+            if (rawEdges.length > 0) {
+              const e = normaliseEdges(rawEdges);
+              if (e.length > 0) setEdges(e);
+            }
+            if (rawNodes.length > 0) setTigStatus("live");
           }
-          if (rawEdge) {
-            const processed = {
-              from: String(rawEdge.from ?? rawEdge.from_id ?? ""),
-              to:   String(rawEdge.to   ?? rawEdge.to_id   ?? ""),
-              weight: Number(rawEdge.weight ?? 0.5),
+
+          // node_added: single new node from a vault commit
+          if (msg.type === "node_added" && msg.payload?.node) {
+            const { node: rawNode, edge: rawEdge } = msg.payload;
+
+            const newNode: GraphNode = {
+              id:          String(rawNode.id),
+              label:       String(rawNode.label),
+              type:        (rawNode.type as GraphNode["type"]) ?? "link",
+              x:           10 + Math.random() * 80,
+              y:           10 + Math.random() * 80,
+              size:        10,
+              connections: 1,
+              detail:      String(rawNode.detail ?? ""),
             };
-            if (processed.from && processed.to) {
-              setEdges((prev) => {
-                if (prev.find((e) => e.from === processed.from && e.to === processed.to)) return prev;
-                return [...prev, processed];
-              });
+
+            setNodes((prev) => prev.find((n) => n.id === newNode.id) ? prev : [...prev, newNode]);
+
+            if (rawEdge?.from && rawEdge?.to) {
+              const newEdge: GraphEdge = {
+                from:     String(rawEdge.from ?? rawEdge.from_id ?? ""),
+                to:       String(rawEdge.to   ?? rawEdge.to_id   ?? ""),
+                weight:   Number(rawEdge.weight   ?? 0.5),
+                relation: String(rawEdge.relation ?? "registered"),
+              };
+              setEdges((prev) => prev.find((e) => e.from === newEdge.from && e.to === newEdge.to) ? prev : [...prev, newEdge]);
+            }
+
+            setTigStatus("live");
+            if (rawNode.label) {
+              setRecentEvents((prev) => [
+                { id: String(Date.now()), label: rawNode.label, ts: Date.now() },
+                ...prev.slice(0, 4),
+              ]);
             }
           }
-          // Flash the node count green briefly to signal new data
-          setTigStatus("live");
-          if (rawNode?.label) {
-            setRecentEvents((prev) => [
-              { id: String(Date.now()), label: rawNode.label, ts: Date.now() },
-              ...prev.slice(0, 4),
-            ]);
-          }
-        }
-      } catch (_) {}
-    };
+        } catch (_) {}
+      };
+    } catch (_) {}
 
-    return () => es.close();
+    return () => { try { es?.close(); } catch (_) {} };
   }, []);
-
-  const handleZoomIn  = () => setZoom((z) => Math.min(z + 0.25, 2.5));
-  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.25, 0.5));
-  const handleReset   = () => { setZoom(1); setSelectedNode(null); setHoveredNode(null); };
 
   const handleTigerConnect = () => {
     setTigStatus("connecting");
-    api.getGraph()
+    const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    fetch(`${BASE}/api/network/graph`)
+      .then((r) => r.json())
       .then((data: any) => {
-        const rawNodes: any[] = data?.nodes ?? data?.vertices ?? data?.results ?? [];
-        const rawEdges: any[] = data?.edges ?? data?.results?.edges ?? [];
-
-        if (rawNodes.length > 0) {
-          setNodes(normaliseNodes(rawNodes));
-          setTigStatus("live");
-        } else {
-          setTigStatus("idle");
-        }
-        if (rawEdges.length > 0) setEdges(processEdges(rawEdges));
+        const rawNodes: any[] = data?.nodes ?? data?.vertices ?? [];
+        const rawEdges: any[] = data?.edges ?? data?.links ?? [];
+        const n = normaliseNodes(rawNodes);
+        const e = normaliseEdges(rawEdges);
+        if (n.length > 0) { setNodes(n); setTigStatus("live"); } else setTigStatus("idle");
+        if (e.length > 0) setEdges(e);
       })
       .catch(() => setTigStatus("idle"));
   };
@@ -605,8 +549,8 @@ export default function NetworkPage() {
 
       {/* Stats row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <MiniStat label="Total Nodes"   value={nodes.length.toLocaleString()} delay={0}   />
-        <MiniStat label="Connections"   value={edges.length.toLocaleString()} delay={0.1} />
+        <MiniStat label="Total Nodes"  value={nodes.length.toLocaleString()} delay={0}   />
+        <MiniStat label="Connections"  value={edges.length.toLocaleString()} delay={0.1} />
         <MiniStat
           label="Graph Density"
           value={nodes.length > 0 ? (edges.length / nodes.length).toFixed(2) : "0"}
@@ -630,8 +574,7 @@ export default function NetworkPage() {
           <div
             className={`w-2.5 h-2.5 rounded-full ${
               tigStatus === "live"       ? "bg-green-400" :
-              tigStatus === "connecting" ? "bg-yellow-400 animate-pulse" :
-              "bg-white/30"
+              tigStatus === "connecting" ? "bg-yellow-400 animate-pulse" : "bg-white/30"
             }`}
             style={{ boxShadow: tigStatus === "live" ? "0 0 8px rgba(34,197,94,0.8)" : undefined }}
           />
@@ -643,36 +586,50 @@ export default function NetworkPage() {
             </p>
             <p className="font-mono text-xs text-muted mt-0.5">
               {tigStatus === "live"
-                ? "REST++ endpoint active · GSQL queries enabled"
+                ? "REST++ active · GSQL enabled · SSE stream connected · relation labels on"
                 : "Connect to enable real-time graph queries"}
             </p>
           </div>
         </div>
 
-        {tigStatus !== "live" && (
-          <motion.button
-            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-            onClick={handleTigerConnect}
-            disabled={tigStatus === "connecting"}
-            className="px-4 py-2 rounded-lg font-mono text-xs uppercase bg-primary/10 border border-primary/40 text-primary btn-glow hover:bg-primary/20 transition-all disabled:opacity-50"
+        <div className="flex items-center gap-2">
+          {/* Toggle relation labels */}
+          <button
+            onClick={() => setShowRelations((v) => !v)}
+            className={`px-3 py-1.5 rounded-lg font-mono text-xs border transition-all ${
+              showRelations
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "bg-white/5 border-card-border text-muted hover:text-foreground"
+            }`}
           >
-            {tigStatus === "connecting" ? (
-              <span className="flex items-center gap-2">
-                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3"/>
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                Connecting
-              </span>
-            ) : "Connect"}
-          </motion.button>
-        )}
+            {showRelations ? "⬤ Relations" : "○ Relations"}
+          </button>
 
-        {tigStatus === "live" && (
-          <span className="font-mono text-xs text-green-400 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
-            {nodes.length} nodes loaded
-          </span>
-        )}
+          {tigStatus !== "live" && (
+            <motion.button
+              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+              onClick={handleTigerConnect}
+              disabled={tigStatus === "connecting"}
+              className="px-4 py-2 rounded-lg font-mono text-xs uppercase bg-primary/10 border border-primary/40 text-primary btn-glow hover:bg-primary/20 transition-all disabled:opacity-50"
+            >
+              {tigStatus === "connecting" ? (
+                <span className="flex items-center gap-2">
+                  <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  Connecting
+                </span>
+              ) : "Connect"}
+            </motion.button>
+          )}
+
+          {tigStatus === "live" && (
+            <span className="font-mono text-xs text-green-400 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
+              {nodes.length} nodes · {edges.length} edges
+            </span>
+          )}
+        </div>
       </motion.div>
 
       {/* Graph card */}
@@ -689,28 +646,23 @@ export default function NetworkPage() {
             </h3>
             <p className="font-mono text-xs text-muted">
               {tigStatus === "live"
-                ? "Live TigerGraph data · Real-time IP asset relationship mapping"
-                : "Static fallback · click Connect to load live data"}{" "}
-              · click a node to inspect
+                ? "Live data · Real-time IP asset relationship mapping"
+                : "Fallback graph · click Connect to load live data"}
+              {" "}· hover a node to highlight its edges · click to inspect
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-muted mr-1">{Math.round(zoom * 100)}%</span>
-            <motion.button
-              whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
-              onClick={handleZoomIn}
-              className="w-8 h-8 rounded-lg font-mono text-sm bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:border-primary transition-all flex items-center justify-center"
-            >+</motion.button>
-            <motion.button
-              whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
-              onClick={handleZoomOut}
-              className="w-8 h-8 rounded-lg font-mono text-sm bg-white/5 border border-card-border text-muted hover:text-foreground hover:border-white/30 transition-all flex items-center justify-center"
-            >−</motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              onClick={handleReset}
-              className="px-3 py-1.5 rounded-lg font-mono text-xs bg-white/5 border border-card-border text-muted hover:text-foreground hover:border-white/30 transition-all"
-            >Reset</motion.button>
+            <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={() => setZoom((z) => Math.min(z + 0.25, 2.5))}
+              className="w-8 h-8 rounded-lg font-mono text-sm bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:border-primary transition-all flex items-center justify-center">+
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={() => setZoom((z) => Math.max(z - 0.25, 0.5))}
+              className="w-8 h-8 rounded-lg font-mono text-sm bg-white/5 border border-card-border text-muted hover:text-foreground hover:border-white/30 transition-all flex items-center justify-center">−
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => { setZoom(1); setSelectedNode(null); setHoveredNode(null); }}
+              className="px-3 py-1.5 rounded-lg font-mono text-xs bg-white/5 border border-card-border text-muted hover:text-foreground hover:border-white/30 transition-all">Reset
+            </motion.button>
           </div>
         </div>
 
@@ -723,6 +675,7 @@ export default function NetworkPage() {
             setHoveredNode={setHoveredNode}
             nodes={nodes}
             edges={edges}
+            showRelations={showRelations}
           />
 
           <AnimatePresence>
@@ -731,14 +684,12 @@ export default function NetworkPage() {
             )}
           </AnimatePresence>
 
-          {/* Legend */}
+          {/* Type legend */}
           <div className="absolute bottom-4 left-4 flex gap-4 flex-wrap pointer-events-none">
             {(["core", "patent", "research", "algorithm", "data"] as const).map((type) => (
               <div key={type} className="flex items-center gap-1.5">
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: NODE_COLORS[type], boxShadow: `0 0 5px ${NODE_COLORS[type]}` }}
-                />
+                <div className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: NODE_COLORS[type], boxShadow: `0 0 5px ${NODE_COLORS[type]}` }} />
                 <span className="font-mono text-[10px] text-muted capitalize">
                   {type === "core" ? "Core IP" : type.charAt(0).toUpperCase() + type.slice(1)}
                 </span>
@@ -751,11 +702,8 @@ export default function NetworkPage() {
             {hoveredNode && !selectedNode && (() => {
               const n = nodes.find((x) => x.id === hoveredNode);
               return n ? (
-                <motion.div
-                  key={hoveredNode}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
+                <motion.div key={hoveredNode}
+                  initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
                   className="absolute bottom-4 right-4 px-3 py-2 rounded-lg glass-card pointer-events-none"
                   style={{ border: `1px solid ${NODE_COLORS[n.type] ?? NODE_COLORS.link}55` }}
                 >
@@ -768,23 +716,19 @@ export default function NetworkPage() {
         </div>
       </motion.div>
 
-      {/* Real-time event feed */}
+      {/* Live event feed */}
       <AnimatePresence>
         {recentEvents.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="glass-card p-4 mb-6"
             style={{ borderTop: "1px solid rgba(34,197,94,0.4)" }}
           >
             <p className="font-mono text-xs text-green-400 uppercase tracking-wider mb-3">⬤ Live — New Nodes Added</p>
             <div className="flex flex-col gap-2">
               {recentEvents.map((ev) => (
-                <motion.div
-                  key={ev.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
+                <motion.div key={ev.id}
+                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                   className="flex items-center justify-between font-mono text-xs"
                 >
                   <span className="text-foreground">{ev.label}</span>
@@ -798,14 +742,11 @@ export default function NetworkPage() {
 
       {/* Top connected nodes */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.45 }}
         className="glass-card p-6"
       >
-        <h3 className="font-mono text-sm text-muted mb-4 uppercase tracking-wider">
-          Top Connected Nodes
-        </h3>
+        <h3 className="font-mono text-sm text-muted mb-4 uppercase tracking-wider">Top Connected Nodes</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {topNodes.map((node, index) => {
             const color = NODE_COLORS[node.type] ?? NODE_COLORS.link;
